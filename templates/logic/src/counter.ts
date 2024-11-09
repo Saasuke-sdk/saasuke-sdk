@@ -1,4 +1,17 @@
-// Counter Contract in TypeScript
+function view(
+    _target: any,
+    _context: ClassMethodDecoratorContext
+) {
+    // View decorator just marks the method
+}
+
+function external(
+    _target: any,
+    _context: ClassMethodDecoratorContext
+) {
+    // External decorator just marks the method
+}
+
 class Counter {
     private value: number;
 
@@ -6,29 +19,28 @@ class Counter {
         this.value = initialValue;
     }
 
+    @view
     public getValue(): number {
         return this.value;
     }
 
-    public increment() {
+    @external
+    public increment(): number {
         this.value += 1;
         return this.value;
     }
 
-    public decrement() {
+    @external
+    public decrement(): number {
         this.value -= 1;
         return this.value;
     }
 
-    public add(amount: number) {
+    @external
+    public add(amount: number): number {
         this.value += amount;
         return this.value;
     }
 }
 
-// Example usage
-const counter = new Counter(10);
-console.log(counter.getValue());    // 10
-console.log(counter.increment());   // 11
-console.log(counter.add(5));       // 16
-console.log(counter.decrement());   // 15
+export default Counter;

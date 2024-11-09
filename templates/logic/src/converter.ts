@@ -1,9 +1,39 @@
 import * as ts from 'typescript';
-import { CairoContract, CairoFunction, CairoStorage } from './types/cairo';
+
+interface CairoType {
+    name: string;
+    cairoType: string;
+}
+
+interface CairoParameter {
+    name: string;
+    type: string;
+}
+
+interface CairoFunction {
+    name: string;
+    parameters: CairoParameter[];
+    returnType: string;
+    visibility: 'external' | 'internal';
+    body: string[];
+    isView: boolean;
+}
+
+interface CairoStorage {
+    name: string;
+    type: string;
+}
+
+interface CairoContract {
+    name: string;
+    storage: CairoStorage[];
+    functions: CairoFunction[];
+}
 
 export class TypeScriptToCairoConverter {
     private sourceFile: ts.SourceFile;
     private contract: CairoContract;
+    private typeMap: Map<string, string>;
 
     constructor(sourceCode: string) {
         this.sourceFile = ts.createSourceFile(
@@ -14,30 +44,61 @@ export class TypeScriptToCairoConverter {
         );
         
         this.contract = {
-            name: 'Counter',
+            name: '',
             storage: [],
             functions: [],
         };
+
+        this.typeMap = new Map([
+            ['number', 'felt252'],
+            ['string', 'felt252'],
+            ['boolean', 'bool'],
+            ['bigint', 'u256'],
+        ]);
     }
 
-    public convert(): string {
-        this.processNode(this.sourceFile);
-        return this.generateCairoCode();
+    private hasViewDecorator(node: ts.MethodDeclaration): boolean {
+        const decorators = ts.getDecorators(node);
+        if (!decorators || decorators.length === 0) return false;
+        
+        return decorators.some((decorator: ts.Decorator) => {
+            const expr = decorator.expression;
+            return ts.isIdentifier(expr) && expr.text === 'view';
+        });
+    }
+
+    private hasExternalDecorator(node: ts.MethodDeclaration): boolean {
+        const decorators = ts.getDecorators(node);
+        if (!decorators || decorators.length === 0) return false;
+        
+        return decorators.some((decorator: ts.Decorator) => {
+            const expr = decorator.expression;
+            return ts.isIdentifier(expr) && expr.text === 'external';
+        });
     }
 
     private processNode(node: ts.Node) {
-        if (ts.isClassDeclaration(node) && node.name?.text === 'Counter') {
+        if (ts.isClassDeclaration(node)) {
+            this.contract.name = node.name?.text || 'Contract';
             this.processClass(node);
         }
         ts.forEachChild(node, child => this.processNode(child));
     }
 
     private processClass(node: ts.ClassDeclaration) {
-        this.contract.storage.push({
-            name: 'value',
-            type: 'felt252'  // Updated to felt252
+        // Process properties for storage
+        node.members.forEach(member => {
+            if (ts.isPropertyDeclaration(member)) {
+                const name = member.name.getText();
+                const type = member.type ? 
+                    this.convertType(member.type) : 
+                    'felt252';
+                
+                this.contract.storage.push({ name, type });
+            }
         });
 
+        // Process methods
         node.members.forEach(member => {
             if (ts.isMethodDeclaration(member)) {
                 this.processMember(member);
@@ -49,101 +110,239 @@ export class TypeScriptToCairoConverter {
         if (!node.name) return;
 
         const methodName = node.name.getText();
-        const parameters = node.parameters.map(param => ({
-            name: param.name.getText(),
-            type: 'felt252'  // Updated to felt252
-        }));
+        const parameters = this.processParameters(node.parameters);
+        const returnType = node.type ? 
+            this.convertType(node.type) : 
+            'felt252';
+
+        // Use the correct decorator check
+        const isView = this.hasViewDecorator(node);
+        const body = this.analyzeFunctionBody(node, isView);
 
         let cairoFunction: CairoFunction = {
             name: methodName,
-            parameters: parameters,
-            returnType: 'felt252',  // Updated to felt252
+            parameters,
+            returnType,
             visibility: 'external',
-            decorators: [],
-            body: []
+            body,
+            isView
         };
-
-        switch (methodName) {
-            case 'getValue':
-                cairoFunction.body = ['self.value.read()'];
-                break;
-            case 'increment':
-                cairoFunction.body = [
-                    'self.value.write(self.value.read() + 1);',
-                    'self.value.read()'
-                ];
-                break;
-            case 'decrement':
-                cairoFunction.body = [
-                    'self.value.write(self.value.read() - 1);',
-                    'self.value.read()'
-                ];
-                break;
-            case 'add':
-                cairoFunction.body = [
-                    'self.value.write(self.value.read() + amount);',
-                    'self.value.read()'
-                ];
-                break;
-        }
 
         this.contract.functions.push(cairoFunction);
     }
 
+
+    private analyzeFunctionBody(node: ts.MethodDeclaration, isView: boolean): string[] {
+        const body: string[] = [];
+        if (!node.body) return body;
+
+        const stateVars = this.findStateVariableAccess(node.body);
+        
+        if (isView) {
+            // For view functions, just read
+            body.push(`self.${stateVars[0]}.read()`);
+        } else {
+            // For external functions that modify state
+            const modifications = this.extractStateModifications(node.body);
+            modifications.forEach(mod => {
+                if (mod.type === 'assignment') {
+                    body.push(`self.${mod.variable}.write(${mod.expression});`);
+                }
+            });
+            // Add final read for return value
+            if (this.hasReturnStatement(node.body)) {
+                body.push(`self.${stateVars[0]}.read()`);
+            }
+        }
+
+        return body;
+    }
+
+    private findStateVariableAccess(node: ts.Node): string[] {
+        const stateVars: string[] = [];
+        const visitor = (node: ts.Node) => {
+            if (ts.isPropertyAccessExpression(node) && 
+                node.expression.kind === ts.SyntaxKind.ThisKeyword) {
+                stateVars.push(node.name.getText());
+            }
+            ts.forEachChild(node, visitor);
+        };
+        visitor(node);
+        return [...new Set(stateVars)];
+    }
+
+    private checkIfModifiesState(node: ts.Node): boolean {
+        let modifiesState = false;
+        const visitor = (node: ts.Node) => {
+            if (ts.isBinaryExpression(node) && 
+                ts.isPropertyAccessExpression(node.left) &&
+                node.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+                modifiesState = true;
+            }
+            ts.forEachChild(node, visitor);
+        };
+        visitor(node);
+        return modifiesState;
+    }
+
+    private extractStateModifications(node: ts.Node): Array<{type: 'assignment', variable: string, expression: string}> {
+        const modifications: Array<{type: 'assignment', variable: string, expression: string}> = [];
+        
+        const visitor = (node: ts.Node) => {
+            if (ts.isBinaryExpression(node)) {
+                if (ts.isPropertyAccessExpression(node.left) && 
+                    node.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+                    const variable = node.left.name.getText();
+                    let expression: string;
+                    
+                    if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken) {
+                        const amount = node.right.getText();
+                        expression = `self.${variable}.read() + ${amount}`;
+                    } else if (node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
+                        const amount = node.right.getText();
+                        expression = `self.${variable}.read() - ${amount}`;
+                    } else {
+                        expression = node.right.getText();
+                    }
+                    
+                    modifications.push({
+                        type: 'assignment',
+                        variable,
+                        expression
+                    });
+                }
+            }
+            ts.forEachChild(node, visitor);
+        };
+        
+        visitor(node);
+        return modifications;
+    }
+
+    private hasReturnStatement(node: ts.Node): boolean {
+        let hasReturn = false;
+        const visitor = (node: ts.Node) => {
+            if (ts.isReturnStatement(node)) {
+                hasReturn = true;
+            }
+            if (!hasReturn) {
+                ts.forEachChild(node, visitor);
+            }
+        };
+        visitor(node);
+        return hasReturn;
+    }
+
+    private processParameters(parameters: ts.NodeArray<ts.ParameterDeclaration>): CairoParameter[] {
+        return parameters.map(param => ({
+            name: param.name.getText(),
+            type: param.type ? this.convertType(param.type) : 'felt252'
+        }));
+    }
+
+    private convertType(typeNode: ts.TypeNode): string {
+        const typeText = typeNode.getText();
+        return this.typeMap.get(typeText) || 'felt252';
+    }
+
+    public convert(): string {
+        this.processNode(this.sourceFile);
+        return this.generateCairoCode();
+    }
+
+    // public convert(): string {
+    //     this.processNode(this.sourceFile);
+    //     return [
+    //         '#[starknet::interface]',
+    //         `pub trait I${this.contract.name}<TContractState> {`,
+    //         this.generateInterfaceFunctions(),
+    //         '}',
+    //         '',
+    //         '#[starknet::contract]',
+    //         `mod ${this.contract.name} {`,
+    //         '    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};',
+    //         '',
+    //         '    #[storage]',
+    //         '    struct Storage {',
+    //         this.generateStorageVariables(),
+    //         '    }',
+    //         '',
+    //         '    #[abi(embed_v0)]',
+    //         `    impl ${this.contract.name}Impl of super::I${this.contract.name}<ContractState> {`,
+    //         this.generateImplementationFunctions(),
+    //         '    }',
+    //         '}'
+    //     ].join('\n');
+    // }
+
+
     private generateCairoCode(): string {
-        // Generate interface
         let code = [
             '#[starknet::interface]',
-            `pub trait ICounter<TContractState> {`,
-            '    fn getValue(self: @TContractState) -> felt252;',
-            '    fn increment(ref self: TContractState) -> felt252;',
-            '    fn decrement(ref self: TContractState) -> felt252;',
-            '    fn add(ref self: TContractState, amount: felt252) -> felt252;',
+            `pub trait I${this.contract.name}<TContractState> {`,
+            this.generateInterfaceFunctions(),
             '}',
             '',
             '#[starknet::contract]',
-            'mod Counter {',
+            `mod ${this.contract.name} {`,
             '    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};',
             '',
             '    #[storage]',
             '    struct Storage {',
-            `        ${this.generateStorageVariables()}`,
+            this.generateStorageVariables(),
             '    }',
             '',
             '    #[abi(embed_v0)]',
-            '    impl CounterImpl of super::ICounter<ContractState> {',
+            `    impl ${this.contract.name}Impl of super::I${this.contract.name}<ContractState> {`,
+            this.generateImplementationFunctions(),
+            '    }',
+            '}'
         ];
-
-        // Add functions
-        this.contract.functions.forEach(func => {
-            code.push(...this.generateFunction(func));
-        });
-
-        code.push('    }', '}');
 
         return code.join('\n');
     }
 
+    
+
+
     private generateStorageVariables(): string {
         return this.contract.storage
-            .map(storage => `${storage.name}: ${storage.type}`)
-            .join(',\n        ');
+            .map(storage => `        ${storage.name}: ${storage.type}`)
+            .join(',\n');
     }
 
-    private generateFunction(func: CairoFunction): string[] {
-        const needsRef = func.name !== 'getValue';
-        const selfParam = needsRef ? 'ref self: ContractState' : 'self: @ContractState';
-        const additionalParams = func.parameters
-            .filter(p => p.name !== 'self')
-            .map(p => `${p.name}: ${p.type}`)
-            .join(', ');
-        const allParams = [selfParam, additionalParams].filter(Boolean).join(', ');
-
-        return [
-            `        fn ${func.name}(${allParams}) -> ${func.returnType} {`,
-            ...func.body.map(line => `            ${line}`),
-            '        }',
-            ''
-        ];
+    private generateInterfaceFunctions(): string {
+        return this.contract.functions.map(func => {
+            const params = func.parameters
+                .map(p => `${p.name}: ${p.type}`)
+                .join(', ');
+            // For view functions use @TContractState, for others use ref
+            const selfParam = func.isView ? 
+                'self: @TContractState' : 
+                'ref self: TContractState';
+            const allParams = [selfParam, params].filter(Boolean).join(', ');
+            return `    fn ${func.name}(${allParams}) -> ${func.returnType};`;
+        }).join('\n');
     }
+
+    private generateImplementationFunctions(): string {
+        return this.contract.functions.map(func => {
+            const params = func.parameters
+                .map(p => `${p.name}: ${p.type}`)
+                .join(', ');
+            // For view functions use @ContractState, for others use ref
+            const selfParam = func.isView ? 
+                'self: @ContractState' : 
+                'ref self: ContractState';
+            const allParams = [selfParam, params].filter(Boolean).join(', ');
+            
+            return [
+                `        fn ${func.name}(${allParams}) -> ${func.returnType} {`,
+                ...func.body.map(line => `            ${line}`),
+                '        }'
+            ].join('\n');
+        }).join('\n\n');
+    }
+
+
 }
