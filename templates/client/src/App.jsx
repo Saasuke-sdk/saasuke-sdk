@@ -11,7 +11,7 @@ function App() {
   const [count, setCount] = useState(0);
   const connection = useSelector((state) => state.connection);
 
-  const increment = async () => {
+  const movementX = async () => {
     const provider = new RpcProvider({
       nodeUrl:
         "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_7/NC_mjlIJfcEpaOhs3JB4JHcjFQhcFOrs",
@@ -27,11 +27,11 @@ function App() {
     const address = connection.address;
     console.log("wallet address", address);
     console.log("contract details", newContract);
-    const response = await newContract.increment();
+    const response = await newContract.moveX();
     console.log(">> response", response);
   };
 
-  const decrement = async () => {
+  const movementY = async () => {
     const provider = new RpcProvider({
       nodeUrl:
         "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_7/NC_mjlIJfcEpaOhs3JB4JHcjFQhcFOrs",
@@ -47,7 +47,7 @@ function App() {
     const address = connection.address;
     console.log("wallet address", address);
     console.log("contract details", newContract);
-    const response = await newContract.decrement();
+    const response = await newContract.moveY();
     console.log(">> response", response);
   };
 
@@ -70,7 +70,7 @@ function App() {
     // Call the contract function
     console.log("sdcdas",  newContract);
     
-    const response =  await newContract.getValue();
+    const response =  await newContract.getX();
 
     console.log(">> response", response);
 
@@ -99,10 +99,10 @@ function App() {
       <h1>Vite + React</h1>
       <div className="flex gap-4 mt-5">
         <button >
-          count is {parseInt(count)}
+          Position of the player is {parseInt(count)}
         </button>
-        <button onClick={increment}>Increment</button>
-        <button onClick={decrement}>Decrement</button>
+        <button onClick={movementX}>moveX</button>
+        <button onClick={movementY}>moveY</button>
       </div>
     </>
   );
