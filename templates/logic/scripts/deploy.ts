@@ -1,6 +1,9 @@
 import { Account, CallData, Contract, RpcProvider, stark } from "starknet";
 import * as dotenv from "dotenv";
+import * as fs from "fs";
+import * as path from "path";  // Import path module
 import { getCompiledCode } from "./utils";
+
 dotenv.config();
 
 async function main() {
@@ -17,14 +20,12 @@ async function main() {
     nodeUrl: rpcEndpoint,
   });
 
-  // initialize existing predeployed account 0
   console.log("ACCOUNT_ADDRESS=", deployerAddress);
   console.log("ACCOUNT_PRIVATE_KEY=", deployerPrivateKey);
 
   const account0 = new Account(provider, deployerAddress, deployerPrivateKey);
   console.log("Account connected.\n");
 
-  // Declare & deploy contract
   let sierraCode, casmCode;
 
   try {
@@ -34,7 +35,7 @@ async function main() {
     process.exit(1);
   }
 
-  const initialCounter = 100;  // Ensure this is a number
+  const initialCounter = 100;
   const initialOwner = deployerAddress;
 
   if (typeof initialCounter !== 'number') {
@@ -48,28 +49,28 @@ async function main() {
   }
 
   const myCallData = new CallData(sierraCode.abi);
-  // const constructor = myCallData.compile("constructor", {
-  //   initial_counter: 100, // Ensure u32 compatibility
-  //   kill_switch_address: "0x05f7151ea24624e12dde7e1307f9048073196644aa54d74a9c579a257214b542",
-  //   initial_owner: initialOwner,
-  // });
 
   const deployResponse = await account0.declareAndDeploy({
     contract: sierraCode,
     casm: casmCode,
-    // constructorCalldata: constructor,
     salt: stark.randomAddress(),
   });
 
-  // Connect the new contract instance :
-  const myTestContract = new Contract(
-    sierraCode.abi,
-    deployResponse.deploy.contract_address,
-    provider
-  );
-  console.log(
-    `✅ Contract has been deployed with the address: ${myTestContract.address}`
-  );
+  const contractAddress = deployResponse.deploy.contract_address;
+  console.log(`✅ Contract has been deployed with the address: ${contractAddress}`);
+
+  // Log the absolute file path
+  const filePath = path.resolve(__dirname, "../../client/global/constant.js");
+  console.log(`Attempting to write contract address to: ${filePath}`);
+
+  const fileContent = `export const contractAddress = "${contractAddress}";\n`;
+
+  try {
+    fs.writeFileSync(filePath, fileContent, "utf8");
+    console.log(`✅ Contract address saved to ${filePath}`);
+  } catch (error) {
+    console.error("Failed to write contract address to file:", error);
+  }
 }
 
 main()
