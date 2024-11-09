@@ -1,0 +1,21 @@
+{
+  "name": "saasuke",
+  "version": "0.1.0",
+  "description": "TypeScript to Cairo Converter",
+  "main": "bin/cli.js",
+  "bin": {
+    "saasuke": "./bin/cli.js"
+  },
+  "dependencies": {
+    "fs-extra": "^10.1.0"
+  },
+  "keywords": [
+    "cli",
+    "vite",
+    "react",
+    "node",
+    "template"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
