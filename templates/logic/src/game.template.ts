@@ -12,7 +12,7 @@ function external(
     // External decorator just marks the method
 }
 
-class Game {
+class {{projectName}} {
     private x: number;
     private y: number;
 
@@ -39,11 +39,11 @@ class Game {
     }
 
     @external
-    public moveBoth(x: number, y:number): number {
+    public moveBoth(x: number, y: number): number {
         this.x += x;
         this.y += y;
-        return this.x , this.y;
+        return this.x;
     }
 }
 
-export default Game;
+export default {{projectName}};
