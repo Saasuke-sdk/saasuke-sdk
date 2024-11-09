@@ -1,7 +1,7 @@
 {
   "name": "saasuke",
-  "version": "0.1.6",
-  "description": "TypeScript to Cairo Converter",
+  "version": "0.1.7",
+  "description": "TypeScript to Cairo Compiler",
   "main": "bin/cli.js",
   "bin": {
     "saasuke": "./bin/cli.js"
@@ -16,6 +16,6 @@
     "node",
     "template"
   ],
-  "author": "Your Name",
+  "author": "Gryffindors",
   "license": "MIT"
 }
