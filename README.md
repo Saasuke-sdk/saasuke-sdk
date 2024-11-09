@@ -58,6 +58,6 @@ npm start
 This command will start the development environment, allowing you to begin building and testing your game.
 
 ### Documentation
-For detailed documentation, setup instructions, and examples, visit our GitBook Documentation.
+For detailed documentation, setup instructions, and examples, visit our [GitBook Documentation.](https://prashants-organization-7.gitbook.io/rise-of-realms)
 
 
