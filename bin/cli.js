@@ -138,12 +138,23 @@ function runCommandSync(command) {
     process.exit(1);
   }
 }
+const packageJsonPath = path.resolve(__dirname, '../package.json');
+let version = '1.0.0';
+
+try {
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  version = packageJson.version || '1.0.0';
+} catch (error) {
+  console.error('Error reading package.json:', error);
+}
 
 function main() {
   const [,, command, projectName] = process.argv;
 
   if (command === 'init' && projectName) {
     initProject(projectName);
+  } else if (command === '--version') {
+    console.log(`Saasuke Version: ${version}`);
   } else if (command === 'compile') {
     console.log('Running convert...');
     runCommand('npm run start');
