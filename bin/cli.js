@@ -1,6 +1,6 @@
-#!/usr/bin/env node
 const fs = require('fs-extra');
 const path = require('path');
+const { exec, execSync } = require('child_process');
 
 async function initProject(projectName) {
   const projectPath = path.join(process.cwd(), projectName);
@@ -8,15 +8,12 @@ async function initProject(projectName) {
   const logicPath = path.join(projectPath, 'logic');
 
   try {
-    // Copy the client template (full Vite setup)
     console.log('Setting up React Vite project in the client directory...');
     await fs.copy(path.join(__dirname, '../templates/client'), clientPath);
 
-    // Copy the logic template (Express server)
     console.log('Setting up Node server in the logic directory...');
     await fs.copy(path.join(__dirname, '../templates/logic'), logicPath);
 
-    // Update package.json name fields
     await updatePackageJsonName(clientPath, projectName);
     await updatePackageJsonName(logicPath, projectName);
 
@@ -31,7 +28,6 @@ async function initProject(projectName) {
   }
 }
 
-// Function to update the package.json 'name' field
 async function updatePackageJsonName(directoryPath, projectName) {
   const packageJsonPath = path.join(directoryPath, 'package.json');
   
@@ -45,11 +41,50 @@ async function updatePackageJsonName(directoryPath, projectName) {
   }
 }
 
+
+function runCommand(command) {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      } else if (stderr) {
+        console.error(`stderr: ${stderr}`);
+      } else {
+        console.log(stdout);
+      }
+    });
+  }  
+
+  function runCommandSync(command) {
+    try {
+      const output = execSync(command, { stdio: 'pipe' }); 
+      if (output) {
+        console.log(output.toString());
+      } else {
+        console.log("No output from the command.");
+      }
+    } catch (error) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+  }
+    
+  
+
 function main() {
   const [,, command, projectName] = process.argv;
 
   if (command === 'init' && projectName) {
     initProject(projectName);
+  } else if (command === 'compile') {
+    console.log('Running convert...');
+    runCommand('npm run start');
+  } else if (command === 'build') {
+    console.log('Running build...');
+    runCommand('npm run build');
+  } else if (command === 'deploy') {
+    console.log('Running deploy...');
+    runCommandSync('npm run deploy');
   } else {
     console.log('Usage: saasuke init <project-name>');
   }
