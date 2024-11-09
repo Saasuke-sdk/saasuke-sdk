@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Read the TypeScript counter code
-const tsCode = fs.readFileSync('src/counter.ts', 'utf8');
+const tsCode = fs.readFileSync('src/game.ts', 'utf8');
 
 // Convert to Cairo
 const converter = new TypeScriptToCairoConverter(tsCode);
@@ -15,7 +15,7 @@ console.log('-------------------');
 console.log(cairoCode);
 
 // Define the correct path to save the Cairo file
-const outputPath = path.join(__dirname, '..', 'contract', 'src', 'counter.cairo');
+const outputPath = path.join(__dirname, '..', 'contract', 'src', 'game.cairo');
 
 // Save to the specified path
 fs.writeFileSync(outputPath, cairoCode);

@@ -29,26 +29,19 @@ async function main() {
   let sierraCode, casmCode;
 
   try {
-    ({ sierraCode, casmCode } = await getCompiledCode("contract_Counter"));
+    ({ sierraCode, casmCode } = await getCompiledCode("game_Game"));
   } catch (error: any) {
     console.log("Failed to read contract files:", error);
     process.exit(1);
   }
 
-  const initialCounter = 100;
   const initialOwner = deployerAddress;
 
-  if (typeof initialCounter !== 'number') {
-    console.error("initial_counter should be a number");
-    process.exit(1);
-  }
 
   if (typeof initialOwner !== 'string' || !initialOwner) {
     console.error("initial_owner should be a valid non-empty string");
     process.exit(1);
   }
-
-  const myCallData = new CallData(sierraCode.abi);
 
   const deployResponse = await account0.declareAndDeploy({
     contract: sierraCode,

@@ -1,6 +1,6 @@
 {
   "name": "saasuke",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "TypeScript to Cairo Converter",
   "main": "bin/cli.js",
   "bin": {

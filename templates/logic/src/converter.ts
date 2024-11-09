@@ -131,33 +131,82 @@ export class TypeScriptToCairoConverter {
         this.contract.functions.push(cairoFunction);
     }
 
+    private getReturnVariable(node: ts.Block): string | undefined {
+        let returnVar: string | undefined;
+        
+        const visitor = (node: ts.Node) => {
+            if (ts.isReturnStatement(node)) {
+                if (node.expression && ts.isPropertyAccessExpression(node.expression)) {
+                    if (node.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
+                        returnVar = node.expression.name.getText();
+                    }
+                }
+            }
+            ts.forEachChild(node, visitor);
+        };
+        
+        visitor(node);
+        return returnVar;
+    }
+    private findReturnExpression(node: ts.Block): string | undefined {
+        const returnStmt = this.findReturnStatement(node);
+        if (!returnStmt || !returnStmt.expression) return undefined;
+
+        // Handle property access (this.x, this.y)
+        if (ts.isPropertyAccessExpression(returnStmt.expression)) {
+            const prop = returnStmt.expression.name.getText();
+            return `self.${prop}.read()`;
+        }
+
+        // Handle binary expression (this.x , this.y)
+        if (ts.isBinaryExpression(returnStmt.expression)) {
+            if (ts.isPropertyAccessExpression(returnStmt.expression.left)) {
+                const prop = returnStmt.expression.left.name.getText();
+                return `self.${prop}.read()`;
+            }
+        }
+
+        return undefined;
+    }
+
+    private findReturnStatement(node: ts.Block): ts.ReturnStatement | undefined {
+        let returnStmt: ts.ReturnStatement | undefined;
+
+        const visitor = (node: ts.Node) => {
+            if (ts.isReturnStatement(node)) {
+                returnStmt = node;
+                return;
+            }
+            ts.forEachChild(node, visitor);
+        };
+
+        visitor(node);
+        return returnStmt;
+    }
 
     private analyzeFunctionBody(node: ts.MethodDeclaration, isView: boolean): string[] {
+        if (!node.body) return [];
         const body: string[] = [];
-        if (!node.body) return body;
 
-        const stateVars = this.findStateVariableAccess(node.body);
-        
         if (isView) {
-            // For view functions, just read
-            body.push(`self.${stateVars[0]}.read()`);
-        } else {
-            // For external functions that modify state
-            const modifications = this.extractStateModifications(node.body);
-            modifications.forEach(mod => {
-                if (mod.type === 'assignment') {
-                    body.push(`self.${mod.variable}.write(${mod.expression});`);
-                }
-            });
-            // Add final read for return value
-            if (this.hasReturnStatement(node.body)) {
-                body.push(`self.${stateVars[0]}.read()`);
-            }
+            const stateVar = this.findStateVariableAccess(node.body)[0];
+            return [`self.${stateVar}.read()`];
+        }
+
+        // Handle state modifications
+        const modifications = this.extractStateModifications(node.body);
+        modifications.forEach(mod => {
+            body.push(`self.${mod.variable}.write(${mod.expression});`);
+        });
+
+        // Handle return statement
+        const returnExpr = this.findReturnExpression(node.body);
+        if (returnExpr) {
+            body.push(returnExpr);
         }
 
         return body;
     }
-
     private findStateVariableAccess(node: ts.Node): string[] {
         const stateVars: string[] = [];
         const visitor = (node: ts.Node) => {
@@ -184,7 +233,6 @@ export class TypeScriptToCairoConverter {
         visitor(node);
         return modifiesState;
     }
-
     private extractStateModifications(node: ts.Node): Array<{type: 'assignment', variable: string, expression: string}> {
         const modifications: Array<{type: 'assignment', variable: string, expression: string}> = [];
         
@@ -202,7 +250,15 @@ export class TypeScriptToCairoConverter {
                         const amount = node.right.getText();
                         expression = `self.${variable}.read() - ${amount}`;
                     } else {
-                        expression = node.right.getText();
+                        // Regular assignment
+                        if (ts.isPropertyAccessExpression(node.right) && 
+                            node.right.expression.kind === ts.SyntaxKind.ThisKeyword) {
+                            // Handle assignments between state variables
+                            const rightVar = node.right.name.getText();
+                            expression = `self.${rightVar}.read()`;
+                        } else {
+                            expression = node.right.getText();
+                        }
                     }
                     
                     modifications.push({
@@ -250,31 +306,7 @@ export class TypeScriptToCairoConverter {
         return this.generateCairoCode();
     }
 
-    // public convert(): string {
-    //     this.processNode(this.sourceFile);
-    //     return [
-    //         '#[starknet::interface]',
-    //         `pub trait I${this.contract.name}<TContractState> {`,
-    //         this.generateInterfaceFunctions(),
-    //         '}',
-    //         '',
-    //         '#[starknet::contract]',
-    //         `mod ${this.contract.name} {`,
-    //         '    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};',
-    //         '',
-    //         '    #[storage]',
-    //         '    struct Storage {',
-    //         this.generateStorageVariables(),
-    //         '    }',
-    //         '',
-    //         '    #[abi(embed_v0)]',
-    //         `    impl ${this.contract.name}Impl of super::I${this.contract.name}<ContractState> {`,
-    //         this.generateImplementationFunctions(),
-    //         '    }',
-    //         '}'
-    //     ].join('\n');
-    // }
-
+   
 
     private generateCairoCode(): string {
         let code = [
