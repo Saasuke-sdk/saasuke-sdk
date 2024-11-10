@@ -38,10 +38,6 @@ async function main() {
   const initialOwner = deployerAddress;
 
 
-  if (typeof initialOwner !== 'string' || !initialOwner) {
-    console.error("initial_owner should be a valid non-empty string");
-    process.exit(1);
-  }
 
   const deployResponse = await account0.declareAndDeploy({
     contract: sierraCode,
