@@ -21,7 +21,6 @@ async function main() {
   });
 
   console.log("ACCOUNT_ADDRESS=", deployerAddress);
-  console.log("ACCOUNT_PRIVATE_KEY=", deployerPrivateKey);
 
   const account0 = new Account(provider, deployerAddress, deployerPrivateKey);
   console.log("Account connected.\n");
