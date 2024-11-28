@@ -1,5 +1,5 @@
 {
-  "name": "saasuke",
+  "name": "@saasuke/saasuke",
   "version": "0.2.1",
   "description": "TypeScript to Cairo Compiler",
   "main": "bin/cli.js",
@@ -18,6 +18,6 @@
     "node",
     "template"
   ],
-  "author": "Gryffindors",
+  "author": "Saasuke Organization",
   "license": "MIT"
 }
