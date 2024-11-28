@@ -33,7 +33,7 @@ Welcome to the **Saasuke SDK**! This SDK simplifies blockchain game development 
 
 1. **Clone the repository**:
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/Saasuke-sdk/saasuke-sdk.git
     cd my-game
     ```
 
