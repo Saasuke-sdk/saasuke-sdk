@@ -22,12 +22,15 @@ interface CairoFunction {
 interface CairoStorage {
     name: string;
     type: string;
+    initialValue?: string;
 }
 
 interface CairoContract {
     name: string;
     storage: CairoStorage[];
     functions: CairoFunction[];
+    constructorParams: CairoParameter[];
+    constructorBody: string[];
 }
 
 export class TypeScriptToCairoConverter {
@@ -47,6 +50,8 @@ export class TypeScriptToCairoConverter {
             name: '',
             storage: [],
             functions: [],
+            constructorParams: [],
+            constructorBody: []
         };
 
         this.typeMap = new Map([
@@ -56,6 +61,42 @@ export class TypeScriptToCairoConverter {
             ['bigint', 'u256'],
         ]);
     }
+
+    private processConstructor(node: ts.ConstructorDeclaration) {
+        // Process constructor parameters
+        this.contract.constructorParams = node.parameters.map(param => ({
+            name: param.name.getText(),
+            type: param.type ? this.convertType(param.type) : 'felt252'
+        }));
+
+        // Process constructor body for initial values
+        if (node.body) {
+            node.body.statements.forEach(statement => {
+                if (ts.isExpressionStatement(statement)) {
+                    const expr = statement.expression;
+                    if (ts.isBinaryExpression(expr) && 
+                        ts.isPropertyAccessExpression(expr.left) &&
+                        expr.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+                        
+                        const varName = expr.left.name.getText();
+                        const initialValue = expr.right.getText();
+                        
+                        // Update storage variable with initial value
+                        const storageVar = this.contract.storage.find(s => s.name === varName);
+                        if (storageVar) {
+                            storageVar.initialValue = initialValue;
+                        }
+                        
+                        // Add to constructor body
+                        this.contract.constructorBody.push(
+                            `self.${varName}.write(${initialValue});`
+                        );
+                    }
+                }
+            });
+        }
+    }
+
 
     private hasViewDecorator(node: ts.MethodDeclaration): boolean {
         const decorators = ts.getDecorators(node);
@@ -96,6 +137,9 @@ export class TypeScriptToCairoConverter {
                 
                 this.contract.storage.push({ name, type });
             }
+            else if (ts.isConstructorDeclaration(member)) {
+                this.processConstructor(member);
+            }
         });
 
         // Process methods
@@ -105,7 +149,6 @@ export class TypeScriptToCairoConverter {
             }
         });
     }
-
     private processMember(node: ts.MethodDeclaration) {
         if (!node.name) return;
 
@@ -308,7 +351,7 @@ export class TypeScriptToCairoConverter {
 
    
 
-    private generateCairoCode(): string {
+   private generateCairoCode(): string {
         let code = [
             '#[starknet::interface]',
             `pub trait I${this.contract.name}<TContractState> {`,
@@ -324,11 +367,19 @@ export class TypeScriptToCairoConverter {
             this.generateStorageVariables(),
             '    }',
             '',
+            '    #[constructor]',
+            '    fn constructor(',
+            `        ref self: ContractState,`,
+            `        ${this.contract.constructorParams.map(p => `${p.name}: ${p.type}`).join(', ')}`,
+            '    ) {',
+            this.contract.constructorBody.map(line => `        ${line}`).join('\n'),
+            '    }',
+            '',
             '    #[abi(embed_v0)]',
             `    impl ${this.contract.name}Impl of super::I${this.contract.name}<ContractState> {`,
             this.generateImplementationFunctions(),
             '    }',
-            '}'
+            '}',
         ];
 
         return code.join('\n');
