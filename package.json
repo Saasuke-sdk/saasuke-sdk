@@ -1,5 +1,5 @@
 {
-  "name": "@saasuke/saasuke",
+  "name": "saasuke",
   "version": "0.2.2",
   "description": "TypeScript to Cairo Compiler",
   "main": "bin/cli.js",
