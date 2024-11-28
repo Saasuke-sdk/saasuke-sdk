@@ -10,11 +10,10 @@ import Navbar from "./Components/Navbar";
 function App() {
   const [count, setCount] = useState(0);
   const connection = useSelector((state) => state.connection);
-
   const movementX = async () => {
     const provider = new RpcProvider({
       nodeUrl:
-        "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_7/NC_mjlIJfcEpaOhs3JB4JHcjFQhcFOrs",
+        "YOUR_RPC_URL",
     });
 
     const ContAbi = await provider.getClassAt(contractAddress);
