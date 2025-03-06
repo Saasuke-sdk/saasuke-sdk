@@ -33,6 +33,7 @@ interface CairoContract {
     constructorBody: string[];
 }
 
+
 export class TypeScriptToCairoConverter {
     private sourceFile: ts.SourceFile;
     private contract: CairoContract;
@@ -59,6 +60,7 @@ export class TypeScriptToCairoConverter {
             ['string', 'felt252'],
             ['boolean', 'bool'],
             ['bigint', 'u256'],
+            // Add more types if needed
         ]);
     }
 
@@ -68,7 +70,12 @@ export class TypeScriptToCairoConverter {
             name: param.name.getText(),
             type: param.type ? this.convertType(param.type) : 'felt252'
         }));
-
+    
+        // Helper function to remove 'n' suffix from bigint literals
+        const removeBigIntSuffix = (value: string): string => {
+            return value.replace(/(\d+)n/g, '$1'); // Remove 'n' from bigint literals
+        };
+    
         // Process constructor body for initial values
         if (node.body) {
             node.body.statements.forEach(statement => {
@@ -79,7 +86,10 @@ export class TypeScriptToCairoConverter {
                         expr.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
                         
                         const varName = expr.left.name.getText();
-                        const initialValue = expr.right.getText();
+                        let initialValue = expr.right.getText();
+                        
+                        // Remove 'n' suffix from bigint literals
+                        initialValue = removeBigIntSuffix(initialValue);
                         
                         // Update storage variable with initial value
                         const storageVar = this.contract.storage.find(s => s.name === varName);
@@ -127,52 +137,39 @@ export class TypeScriptToCairoConverter {
     }
 
     private processClass(node: ts.ClassDeclaration) {
-        // Process properties for storage
         node.members.forEach(member => {
             if (ts.isPropertyDeclaration(member)) {
                 const name = member.name.getText();
-                const type = member.type ? 
-                    this.convertType(member.type) : 
-                    'felt252';
-                
+                const type = member.type ? this.convertType(member.type) : 'felt252';
                 this.contract.storage.push({ name, type });
-            }
-            else if (ts.isConstructorDeclaration(member)) {
+            } else if (ts.isConstructorDeclaration(member)) {
                 this.processConstructor(member);
-            }
-        });
-
-        // Process methods
-        node.members.forEach(member => {
-            if (ts.isMethodDeclaration(member)) {
+            } else if (ts.isMethodDeclaration(member)) {
                 this.processMember(member);
             }
         });
     }
     private processMember(node: ts.MethodDeclaration) {
         if (!node.name) return;
-
+    
         const methodName = node.name.getText();
         const parameters = this.processParameters(node.parameters);
-        const returnType = node.type ? 
-            this.convertType(node.type) : 
-            'felt252';
-
-        // Use the correct decorator check
+        const returnType = node.type ? this.convertType(node.type) : 'felt252';
         const isView = this.hasViewDecorator(node);
         const body = this.analyzeFunctionBody(node, isView);
-
-        let cairoFunction: CairoFunction = {
+    
+        const cairoFunction: CairoFunction = {
             name: methodName,
             parameters,
             returnType,
-            visibility: 'external',
+            visibility: isView ? 'external' : 'external', // View functions are external in Cairo
             body,
-            isView
+            isView,
         };
-
+    
         this.contract.functions.push(cairoFunction);
     }
+    
 
     private getReturnVariable(node: ts.Block): string | undefined {
         let returnVar: string | undefined;
@@ -230,26 +227,80 @@ export class TypeScriptToCairoConverter {
     private analyzeFunctionBody(node: ts.MethodDeclaration, isView: boolean): string[] {
         if (!node.body) return [];
         const body: string[] = [];
-
-        if (isView) {
-            const stateVar = this.findStateVariableAccess(node.body)[0];
-            return [`self.${stateVar}.read()`];
-        }
-
+    
+        // Helper function to remove 'n' suffix from bigint literals
+        const removeBigIntSuffix = (value: string): string => {
+            return value.replace(/(\d+)n/g, '$1'); // Remove 'n' from bigint literals
+        };
+    
+        // Handle variable declarations
+        const variableDeclarations = this.extractVariableDeclarations(node.body);
+        variableDeclarations.forEach(decl => {
+            // Replace `this.x` with `self.x.read()`
+            let initializer = decl.initializer.replace(/this\.(\w+)/g, 'self.$1.read()');
+            // Remove 'n' suffix from bigint literals
+            initializer = removeBigIntSuffix(initializer);
+            body.push(`let ${decl.name} = ${initializer};`);
+        });
+    
         // Handle state modifications
         const modifications = this.extractStateModifications(node.body);
         modifications.forEach(mod => {
-            body.push(`self.${mod.variable}.write(${mod.expression});`);
+            if (mod.type === 'assignment') {
+                // Replace `this.x = value` with `self.x.write(value)`
+                let expression = mod.expression ? mod.expression.replace(/this\.(\w+)/g, 'self.$1.read()') : '';
+                // Remove 'n' suffix from bigint literals
+                expression = removeBigIntSuffix(expression);
+                body.push(`self.${mod.variable}.write(${expression});`);
+            } else if (mod.type === 'conditional') {
+                // Replace `this.x` with `self.x.read()` in conditions
+                let condition = mod.condition ? mod.condition.replace(/this\.(\w+)/g, 'self.$1.read()') : '';
+                // Remove 'n' suffix from bigint literals
+                condition = removeBigIntSuffix(condition);
+                body.push(`if ${condition} {`);
+                if (mod.body) {
+                    mod.body.forEach(line => {
+                        // Replace `this.x = value` with `self.x.write(value)`
+                        let updatedLine = line.replace(/this\.(\w+)\s*=\s*(.+)/g, 'self.$1.write($2)');
+                        // Remove 'n' suffix from bigint literals
+                        updatedLine = removeBigIntSuffix(updatedLine);
+                        body.push(`    ${updatedLine}`);
+                    });
+                }
+                body.push(`}`);
+            }
         });
-
-        // Handle return statement
-        const returnExpr = this.findReturnExpression(node.body);
-        if (returnExpr) {
-            body.push(returnExpr);
+    
+        // Handle return statements
+        const returnStmt = this.findReturnStatement(node.body);
+        if (returnStmt && returnStmt.expression) {
+            let returnExpr = returnStmt.expression.getText();
+            // Replace `this.x` with `self.x.read()` in return statements
+            returnExpr = returnExpr.replace(/this\.(\w+)/g, 'self.$1.read()');
+            // Remove 'n' suffix from bigint literals
+            returnExpr = removeBigIntSuffix(returnExpr);
+            body.push(`return ${returnExpr};`);
         }
-
+    
         return body;
     }
+
+    private extractVariableDeclarations(node: ts.Node): Array<{ name: string, initializer: string }> {
+        const declarations: Array<{ name: string, initializer: string }> = [];
+    
+        const visitor = (node: ts.Node) => {
+            if (ts.isVariableDeclaration(node)) {
+                const name = node.name.getText();
+                const initializer = node.initializer ? node.initializer.getText() : '0';
+                declarations.push({ name, initializer });
+            }
+            ts.forEachChild(node, visitor);
+        };
+    
+        visitor(node);
+        return declarations;
+    }
+
     private findStateVariableAccess(node: ts.Node): string[] {
         const stateVars: string[] = [];
         const visitor = (node: ts.Node) => {
@@ -276,44 +327,32 @@ export class TypeScriptToCairoConverter {
         visitor(node);
         return modifiesState;
     }
-    private extractStateModifications(node: ts.Node): Array<{type: 'assignment', variable: string, expression: string}> {
-        const modifications: Array<{type: 'assignment', variable: string, expression: string}> = [];
-        
+    private extractStateModifications(node: ts.Node): Array<{ type: string, variable?: string, expression?: string, condition?: string, body?: string[] }> {
+        const modifications: Array<{ type: string, variable?: string, expression?: string, condition?: string, body?: string[] }> = [];
+    
         const visitor = (node: ts.Node) => {
             if (ts.isBinaryExpression(node)) {
-                if (ts.isPropertyAccessExpression(node.left) && 
+                if (ts.isPropertyAccessExpression(node.left) &&
                     node.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
                     const variable = node.left.name.getText();
-                    let expression: string;
-                    
-                    if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken) {
-                        const amount = node.right.getText();
-                        expression = `self.${variable}.read() + ${amount}`;
-                    } else if (node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
-                        const amount = node.right.getText();
-                        expression = `self.${variable}.read() - ${amount}`;
-                    } else {
-                        // Regular assignment
-                        if (ts.isPropertyAccessExpression(node.right) && 
-                            node.right.expression.kind === ts.SyntaxKind.ThisKeyword) {
-                            // Handle assignments between state variables
-                            const rightVar = node.right.name.getText();
-                            expression = `self.${rightVar}.read()`;
-                        } else {
-                            expression = node.right.getText();
+                    const expression = node.right.getText();
+                    modifications.push({ type: 'assignment', variable, expression });
+                }
+            } else if (ts.isIfStatement(node)) {
+                const condition = node.expression.getText();
+                const body: string[] = [];
+                if (node.thenStatement && ts.isBlock(node.thenStatement)) {
+                    node.thenStatement.statements.forEach(statement => {
+                        if (ts.isExpressionStatement(statement)) {
+                            body.push(statement.expression.getText());
                         }
-                    }
-                    
-                    modifications.push({
-                        type: 'assignment',
-                        variable,
-                        expression
                     });
                 }
+                modifications.push({ type: 'conditional', condition, body });
             }
             ts.forEachChild(node, visitor);
         };
-        
+    
         visitor(node);
         return modifications;
     }
@@ -386,6 +425,47 @@ export class TypeScriptToCairoConverter {
     }
 
     
+    private convertRelationalExpression(expr: ts.BinaryExpression): string {
+        const left = expr.left.getText();
+        const right = expr.right.getText();
+        const operator = expr.operatorToken.getText();
+    
+        // Map TypeScript operators to Cairo operators
+        const operatorMap = new Map<string, string>([
+            ['==', '=='],
+            ['!=', '!='],
+            ['<', '<'],
+            ['>', '>'],
+            ['<=', '<='],
+            ['>=', '>='],
+        ]);
+    
+        const cairoOperator = operatorMap.get(operator);
+        if (!cairoOperator) {
+            throw new Error(`Unsupported relational operator: ${operator}`);
+        }
+    
+        return `${left} ${cairoOperator} ${right}`;
+    }
+
+    private extractRelationalExpressions(node: ts.Node): string[] {
+        const expressions: string[] = [];
+    
+        const visitor = (node: ts.Node) => {
+            if (ts.isBinaryExpression(node)) {
+                const operator = node.operatorToken.getText();
+                if (['==', '!=', '<', '>', '<=', '>='].includes(operator)) {
+                    const cairoExpr = this.convertRelationalExpression(node);
+                    expressions.push(cairoExpr);
+                }
+            }
+            ts.forEachChild(node, visitor);
+        };
+    
+        visitor(node);
+        return expressions;
+    }
+
 
 
     private generateStorageVariables(): string {
@@ -413,7 +493,6 @@ export class TypeScriptToCairoConverter {
             const params = func.parameters
                 .map(p => `${p.name}: ${p.type}`)
                 .join(', ');
-            // For view functions use @ContractState, for others use ref
             const selfParam = func.isView ? 
                 'self: @ContractState' : 
                 'ref self: ContractState';
