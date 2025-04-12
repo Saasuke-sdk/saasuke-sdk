@@ -15,8 +15,7 @@ async function main() {
     constructorValue = args[1];
     console.log("Forwarded Argument (constructor value):", constructorValue);
   } else {
-    console.error("No valid constructor value was provided. Exiting.");
-    process.exit(1);
+    console.log("No constructor value provided. Proceeding without constructor data.");
   }
 
   const rpcEndpoint = process.env.RPC_ENDPOINT;
@@ -46,12 +45,27 @@ async function main() {
     process.exit(1);
   }
 
-  const deployResponse = await account0.declareAndDeploy({
-    contract: sierraCode,
-    casm: casmCode,
-    salt: stark.randomAddress(),
-    constructorCalldata: CallData.compile([constructorValue]),
-  });
+  let deployResponse;
+
+  try {
+    if(constructorValue) {
+      deployResponse = await account0.declareAndDeploy({
+        contract: sierraCode,
+        casm: casmCode,
+        salt: stark.randomAddress(),
+        constructorCalldata: CallData.compile([constructorValue]),
+      });
+    } else {
+      deployResponse = await account0.declareAndDeploy({
+        contract: sierraCode,
+        casm: casmCode,
+        salt: stark.randomAddress(),
+      });
+    }
+  } catch (error: any) {
+    console.error("Deployment failed:", error);
+    process.exit(1);
+  }
 
   const contractAddress = deployResponse.deploy.contract_address;
   console.log(`✅ Contract has been deployed with the address: ${contractAddress}`);
