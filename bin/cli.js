@@ -110,10 +110,11 @@ function runCommand(command, description) {
   });
 }
 
-function runCommandSync(command, description) {
+function runCommandSync(command, description, args = []) {
   const spinner = ora(description).start();
   try {
-    const output = execSync(command, { stdio: 'pipe' });
+    const fullCommand = `${command} ${args.join(' ')}`;
+    const output = execSync(fullCommand, { stdio: 'pipe' });
     spinner.succeed(output.toString());
   } catch (error) {
     spinner.fail(`Error: ${error.message}`);
@@ -132,7 +133,7 @@ function showHelp() {
 
 async function main() {
   await loadModules();  // Ensure chalk and ora are loaded
-  const [,, command, projectName] = process.argv;
+  const [,, command, projectName, ...args] = process.argv;
 
   if (command === 'init' && projectName) {
     initProject(projectName);
@@ -143,7 +144,7 @@ async function main() {
   } else if (command === 'build') {
     runCommand('npm run build', 'Running build...');
   } else if (command === 'deploy') {
-    runCommandSync('npm run deploy', 'Running deploy...');
+    runCommandSync('npm run deploy', 'Running deploy...', args);
   } else if (!command) {
     showHelp();
   } else {

@@ -1,12 +1,24 @@
-import { Account, CallData, Contract, RpcProvider, stark } from "starknet";
+import { Account, CallData, RpcProvider, stark } from "starknet";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
-import * as path from "path";  // Import path module
+import * as path from "path";
 import { getCompiledCode } from "./utils";
+import * as process from "process";
 
 dotenv.config();
 
 async function main() {
+  const args = process.argv.slice(2);
+
+  let constructorValue: string | null = null;
+  if (args.length > 0) {
+    constructorValue = args[1];
+    console.log("Forwarded Argument (constructor value):", constructorValue);
+  } else {
+    console.error("No valid constructor value was provided. Exiting.");
+    process.exit(1);
+  }
+
   const rpcEndpoint = process.env.RPC_ENDPOINT;
   const deployerAddress = process.env.DEPLOYER_ADDRESS;
   const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY;
@@ -34,20 +46,18 @@ async function main() {
     process.exit(1);
   }
 
-  const initialOwner = deployerAddress;
-
-
-
   const deployResponse = await account0.declareAndDeploy({
     contract: sierraCode,
     casm: casmCode,
     salt: stark.randomAddress(),
+    constructorCalldata: CallData.compile([constructorValue]),
   });
 
   const contractAddress = deployResponse.deploy.contract_address;
   console.log(`✅ Contract has been deployed with the address: ${contractAddress}`);
+  console.log(`🔗 View the contract on Sepolia Voyager: https://sepolia.voyager.online/contract/${contractAddress}`);
 
-  // Log the absolute file path
+
   const filePath = path.resolve(__dirname, "../../client/global/constant.js");
   console.log(`Attempting to write contract address to: ${filePath}`);
 
