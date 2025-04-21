@@ -23,29 +23,30 @@ try {
 async function initProject(projectName) {
   const spinner = ora(`Initializing project ${projectName}...`).start();
   const projectPath = path.join(process.cwd(), projectName);
-  const clientPath = path.join(projectPath, 'client');
-  const logicPath = path.join(projectPath, 'logic');
+  const clientPath = path.join(projectPath, "client");
+  const logicPath = path.join(projectPath, "logic");
 
   try {
-    spinner.text = 'Setting up React Vite project in the client directory...';
-    await fs.copy(path.join(__dirname, '../templates/client'), clientPath);
+      spinner.text = "Setting up React Vite project in the client directory...";
+      await fs.copy(path.join(__dirname, "../templates/client"), clientPath);
 
-    spinner.text = 'Setting up Node server in the logic directory...';
-    await fs.copy(path.join(__dirname, '../templates/logic'), logicPath);
+      spinner.text = "Setting up Node server in the logic directory...";
+      await fs.copy(path.join(__dirname, "../templates/logic"), logicPath);
 
-    await createGameFile(logicPath, projectName);
-    await updateIndexFile(logicPath, projectName);
-    await updatePackageJsonName(clientPath, projectName);
-    await updatePackageJsonName(logicPath, projectName);
+      spinner.text = "Finalizing project setup...";
+      await createGameFile(logicPath, projectName);
+      await updateIndexFile(logicPath, projectName);
+      await updatePackageJsonName(clientPath, projectName);
+      await updatePackageJsonName(logicPath, projectName);
 
-    spinner.succeed(`Project ${chalk.green(projectName)} created successfully!`);
-    console.log(chalk.blue('Next steps:'));
-    console.log(chalk.green(`1. Navigate to the project directory: cd ${projectName}`));
-    console.log(chalk.green('2. Install dependencies for both client and logic:'));
-    console.log(chalk.green('   cd client && npm install'));
-    console.log(chalk.green('   cd ../logic && npm install'));
+      spinner.succeed(`Project ${chalk.green(projectName)} created successfully!`);
+      console.log(chalk.blue("Next steps:"));
+      console.log(chalk.green(`1. Navigate to the project directory: cd ${projectName}`));
+      console.log(chalk.green("2. Install dependencies for both client and logic:"));
+      console.log(chalk.green("   cd client && npm install"));
+      console.log(chalk.green("   cd ../logic && npm install"));
   } catch (error) {
-    spinner.fail(`Error creating project: ${error}`);
+      spinner.fail(`Error creating project: ${error.message}`);
   }
 }
 

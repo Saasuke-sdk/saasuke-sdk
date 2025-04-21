@@ -1,5 +1,5 @@
 {
-    "compilerOptions": {
+  "compilerOptions": {
       "target": "es2020",
       "module": "commonjs",
       "lib": ["es2020"],
@@ -9,8 +9,13 @@
       "forceConsistentCasingInFileNames": true,
       "outDir": "./dist",
       "rootDir": "./src",
-      "declaration": true
-    },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist"]
-  }
+      "declaration": true,
+      "typeRoots": ["./node_modules/@types", "../../bin/types"],
+      "baseUrl": ".",
+      "paths": {
+          "saasuke": ["../../bin/types/saasuke.d.ts"]
+      }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
