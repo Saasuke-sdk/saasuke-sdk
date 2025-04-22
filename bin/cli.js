@@ -10,13 +10,6 @@ async function loadModules() {
   chalk = (await import('chalk')).default;
 }
 
-// Dynamically set NODE_PATH
-process.env.NODE_PATH = require('child_process')
-    .execSync('npm root -g')
-    .toString()
-    .trim();
-require('module').Module._initPaths();
-
 const packageJsonPath = path.resolve(__dirname, '../package.json');
 let version = '1.0.0';
 
@@ -25,40 +18,6 @@ try {
   version = packageJson.version || '1.0.0';
 } catch (error) {
   console.error('Error reading package.json:', error);
-}
-
-async function updateTsConfig(logicPath) {
-  try {
-      const tsConfigPath = path.join(logicPath, 'tsconfig.json');
-      const tsConfigContent = await fs.readJson(tsConfigPath);
-
-      // Ensure compilerOptions exists
-      tsConfigContent.compilerOptions = tsConfigContent.compilerOptions || {};
-
-      // Ensure typeRoots exists and remove problematic entries
-      tsConfigContent.compilerOptions.typeRoots = tsConfigContent.compilerOptions.typeRoots || [];
-      tsConfigContent.compilerOptions.typeRoots = tsConfigContent.compilerOptions.typeRoots.filter(
-          (typeRoot) => typeRoot !== "/opt/homebrew/lib/node_modules" // Remove unwanted path
-      );
-
-      // Add global typeRoots dynamically if not already present
-      const globalNodeModules = process.env.NODE_PATH;
-      if (globalNodeModules && !tsConfigContent.compilerOptions.typeRoots.includes(globalNodeModules)) {
-          tsConfigContent.compilerOptions.typeRoots.push(globalNodeModules);
-      }
-
-      // Ensure paths configuration for "saasuke"
-      tsConfigContent.compilerOptions.paths = tsConfigContent.compilerOptions.paths || {};
-      if (!tsConfigContent.compilerOptions.paths["saasuke"]) {
-          tsConfigContent.compilerOptions.paths["saasuke"] = ["../../bin/types/saasuke.d.ts"];
-      }
-
-      // Write the updated tsconfig.json back to disk
-      await fs.writeJson(tsConfigPath, tsConfigContent, { spaces: 2 });
-      console.log('Updated tsconfig.json to exclude /opt/homebrew/lib/node_modules and include global typeRoots and paths for saasuke module.');
-  } catch (error) {
-      console.error(`Failed to update tsconfig.json: ${error.message}`);
-  }
 }
 
 async function initProject(projectName) {
@@ -73,9 +32,6 @@ async function initProject(projectName) {
 
       spinner.text = 'Setting up Node server in the logic directory...';
       await fs.copy(path.join(__dirname, '../templates/logic'), logicPath);
-
-      spinner.text = 'Configuring TypeScript for saasuke module...';
-      await updateTsConfig(logicPath);
 
       spinner.text = 'Finalizing project setup...';
       await createGameFile(logicPath, projectName);

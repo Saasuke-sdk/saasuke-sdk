@@ -1,17 +1,11 @@
 {
   "name": "saasuke",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "TypeScript to Cairo Compiler",
   "main": "bin/cli.js",
   "bin": {
     "saasuke": "./bin/cli.js"
   },
-  "types": "./types/saasuke.d.ts",
-  "files": [
-    "bin/",
-    "types/",
-    "templates/"
-  ],
   "dependencies": {
     "chalk": "^5.3.0",
     "fs-extra": "^10.1.0",

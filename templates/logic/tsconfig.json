@@ -10,11 +10,6 @@
       "outDir": "./dist",
       "rootDir": "./src",
       "declaration": true,
-      "typeRoots": ["./node_modules/@types", "../../bin/types"],
-      "baseUrl": ".",
-      "paths": {
-          "saasuke": ["../../bin/types/saasuke.d.ts"]
-      }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
